@@ -51,7 +51,6 @@
 
 /*
  * =========================================================================
- * Settings to modify per driver
  */
 
 #define VOLTAGE_MON         // Comment out to disable LVP
@@ -60,17 +59,32 @@
 // level_calc.py 1 4 7135 9 8 700
 // level_calc.py 1 3 7135 9 8 700
 
-#define RAMP_SIZE  7
-//#define RAMP_FET   6,12,34,108,255
-#define RAMP_FET   1,7,32,63,107,127,255
+/* This business of talking about a "FET" is a historical artifact
+ * from other flashlights.  The Convoy has no FEt, only a set of 7135 chips.
+ * Some lights have both a fet (controlled by one PWM pin) and
+ * a 7135 (controlled by another pin).
+ * So maybe we should change "FET" to "7135" in this source file.
+ *
+ * What goes on here is that we have a table of PWM settings that
+ * we index by 1 ... 7  in the modegroups table.
+ * The setting "7" is full on.
+ * 0 in the modegroup table is "not in use"
+ * (note that we do subtract 1 from the table value)
+ */
 
-// Enable battery indicator mode?
+#define RAMP_SIZE  7
+#define RAMP_FET   1,7,32,63,107,127,255
+// some other old scheme
+//#define RAMP_FET   6,12,34,108,255
+
+#define TURBO     RAMP_SIZE       // Convenience code for turbo mode
+
+// Enable battery indicator mode
+// (this code is in tk-voltage.h
 #define USE_BATTCHECK
 
 // Choose a battery indicator style
 #define BATTCHECK_4bars  // up to 4 blinks
-//#define BATTCHECK_8bars  // up to 8 blinks
-//#define BATTCHECK_VpT  // Volts + tenths
 
 // output to use for blinks on battery check (and other modes)
 //#define BLINK_BRIGHTNESS    RAMP_SIZE/4
@@ -84,8 +98,8 @@
 // battcheck, use BATTCHECK,STROBE,TURBO .
 //#define HIDDENMODES         BATTCHECK,STROBE,TURBO
 
-#define TURBO     RAMP_SIZE       // Convenience code for turbo mode
 #define BATTCHECK 254       // Convenience code for battery check mode
+
 #define GROUP_SELECT_MODE 253
 
 // Uncomment to enable tactical strobe mode
@@ -98,7 +112,6 @@
 // comment out to use minimal version instead (smaller)
 // TJT comments this out to save space.
 //#define FULL_BIKING_STROBE
-//#define RAMP 249       // ramp test mode for tweaking ramp shape
 
 #define POLICE_STROBE 248
 //#define RANDOM_STROBE 247
@@ -408,8 +421,10 @@ static inline void strobe(uint8_t ontime, uint8_t offtime) {
 #endif
 
 #ifdef SOS
-static inline void SOS_mode() {
 #define SOS_SPEED (200/4)
+
+static inline
+void SOS_mode() {
     blink(3, SOS_SPEED);
     _delay_4ms(SOS_SPEED*5);
     blink(3, SOS_SPEED*5/2);
@@ -419,7 +434,8 @@ static inline void SOS_mode() {
 }
 #endif
 
-void toggle(uint8_t *var, uint8_t num) {
+void
+toggle(uint8_t *var, uint8_t num) {
     // Used for config mode
     // Changes the value of a config option, waits for the user to "save"
     // by turning the light off, then changes the value back in case they
@@ -444,7 +460,8 @@ void toggle(uint8_t *var, uint8_t num) {
     _delay_s();
 }
 
-int main(void)
+int
+main(void)
 {
     // check the OTC immediately before it has a chance to charge or discharge
 
@@ -492,6 +509,7 @@ int main(void)
     long_press = 0;
     save_mode();
 
+	// The Convoy has no OTC capacitor to charge up
     #ifdef CAP_PIN
     // Charge up the capacitor by setting CAP_PIN to output
     DDRB  |= (1 << CAP_PIN);    // Output
@@ -607,41 +625,16 @@ int main(void)
 #endif
         }
 #endif  // ifdef BIKING_STROBE
+
 #ifdef SOS
         else if (output == SOS) { SOS_mode(); }
 #endif // ifdef SOS
 
-#ifdef RAMP
-        else if (output == RAMP) {
-            int8_t r;
-            // simple ramping test
-            for(r=1; r<=RAMP_SIZE; r++) {
-                set_level(r);
-                _delay_4ms(6);
-            }
-            for(r=RAMP_SIZE; r>0; r--) {
-                set_level(r);
-                _delay_4ms(6);
-            }
-        }
-#endif  // ifdef RAMP
-
 #ifdef BATTCHECK
         else if (output == BATTCHECK) {
-#ifdef BATTCHECK_VpT
-            // blink out volts and tenths
-            _delay_4ms(25);
-            uint8_t result = battcheck();
-            blink(result >> 5, BLINK_SPEED/8);
-            _delay_4ms(BLINK_SPEED);
-            blink(1,5/4);
-            _delay_4ms(254);
-            blink(result & 0b00011111, BLINK_SPEED/8);
-#else  // ifdef BATTCHECK_VpT
             // blink zero to five times to show voltage
             // (~0%, ~25%, ~50%, ~75%, ~100%, >100%)
-            blink(battcheck(), BLINK_SPEED/4);
-#endif  // ifdef BATTCHECK_VpT
+            blink ( battcheck(), BLINK_SPEED/4 );
             // wait between readouts
             _delay_s(); _delay_s();
         }

@@ -24,7 +24,8 @@
 #include "tk-calibration.h"
 
 #ifdef TEMPERATURE_MON
-static inline void ADC_on_temperature() {
+static inline void
+ADC_on_temperature() {
     // TODO: (?) enable ADC Noise Reduction Mode, Section 17.7 on page 128
     //       (apparently can only read while the CPU is in idle mode though)
     // select ADC4 by writing 0b00001111 to ADMUX
@@ -38,7 +39,8 @@ static inline void ADC_on_temperature() {
 #endif  // TEMPERATURE_MON
 
 #ifdef VOLTAGE_MON
-static inline void ADC_on() {
+static inline void
+ADC_on() {
     // disable digital input on ADC pin to reduce power consumption
     DIDR0 |= (1 << ADC_DIDR);
     // 1.1v reference, left-adjust, ADC1/PB2
