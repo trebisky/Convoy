@@ -3,7 +3,12 @@
  * This code runs on a single-channel driver with attiny13a MCU.
  * It is intended specifically for nanjg 105d drivers from Convoy.
  *
+ * This is "simple" -- a severely pruned version of Biscotti,
+ *  hacked together by Tom.  I got rid of all blink and strobe
+ *  modes, and reduced the 12 groups to just the 1 I wanted.
+ *
  * Copyright (C) 2017 Selene Scriven
+ * Copyright (C) 2024 Tom Trebisky
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -55,10 +60,6 @@
 
 #define VOLTAGE_MON         // Comment out to disable LVP
 
-// ../../bin/level_calc.py 64 1 10 1300 y 3 0.23 140
-// level_calc.py 1 4 7135 9 8 700
-// level_calc.py 1 3 7135 9 8 700
-
 /* This business of talking about a "FET" is a historical artifact
  * from other flashlights.  The Convoy has no FEt, only a set of 7135 chips.
  * Some lights have both a fet (controlled by one PWM pin) and
@@ -72,10 +73,17 @@
  * (note that we do subtract 1 from the table value)
  */
 
+/* Here is the original set --
+ * 0.4, 2.7, 12.5, 25, 42, 50, 100
+ */
 #define RAMP_SIZE  7
 #define RAMP_FET   1,7,32,63,107,127,255
-// some other old scheme
-//#define RAMP_FET   6,12,34,108,255
+
+/* The BLF offers 7 levels, sort of as follows:
+ * 0.13, 0.5, 5, 17, 24, 43, 100
+ *
+ * Note that the Convoy cannot achieve the low moonlight
+ */
 
 #define TURBO     RAMP_SIZE       // Convenience code for turbo mode
 
@@ -93,33 +101,11 @@
 // ms per normal-speed blink
 #define BLINK_SPEED         (750/4)
 
-// Hidden modes are *before* the lowest (moon) mode, and should be specified
-// in reverse order.  So, to go backward from moon to turbo to strobe to
-// battcheck, use BATTCHECK,STROBE,TURBO .
-//#define HIDDENMODES         BATTCHECK,STROBE,TURBO
-
 #define BATTCHECK 254       // Convenience code for battery check mode
 
 #define GROUP_SELECT_MODE 253
 
-// Uncomment to enable tactical strobe mode
-// TJT comments this out to save space.
-// #define ANY_STROBE  // required for strobe or police_strobe
-//#define STROBE    251       // Convenience code for strobe mode
-
-// Uncomment to unable a 2-level stutter beacon instead of a tactical strobe
-#define BIKING_STROBE 250   // Convenience code for biking strobe mode
-// comment out to use minimal version instead (smaller)
-// TJT comments this out to save space.
-//#define FULL_BIKING_STROBE
-
-#define POLICE_STROBE 248
-//#define RANDOM_STROBE 247
-
 #define SOS 246
-
-// Calibrate voltage and OTC in this file:
-#include "tk-calibration.h"
 
 /*
  * =========================================================================
@@ -141,20 +127,14 @@
 #define USE_DELAY_S         // Also use _delay_s(), not just _delay_ms()
 #include "tk-delay.h"
 
+// This also pulls in tk-calibration.h
 #include "tk-voltage.h"
-
-#ifdef RANDOM_STROBE
-#include "tk-random.h"
-#endif
 
 /*
  * global variables
  */
 
 uint8_t modegroup;     // which mode group (set above in #defines)
-
-#define enable_moon 0   // Should we add moon to the set of modes?
-#define reverse_modes 0 // flip the mode order?
 
 uint8_t memory;        // mode memory, or not (set via soldered star)
 
@@ -171,11 +151,13 @@ uint8_t long_press __attribute__ ((section (".noinit")));
 // number of regular non-hidden modes in current mode group
 uint8_t solid_modes;
 
+PROGMEM const uint8_t ramp_FET[]  = { RAMP_FET };
+
 // default values calculated by group_calc.py
 // Each group must be 8 values long, but can be cut short with a zero.
 
-#define NUM_MODEGROUPS 12
-
+#ifdef notdef
+// #define NUM_MODEGROUPS 12
 PROGMEM const uint8_t modegroups[] = {
      1,  2,  3,  5,  7,  POLICE_STROBE, BIKING_STROBE, BATTCHECK,
      1,  2,  3,  5,  7,  0,  0,  0,
@@ -190,12 +172,21 @@ PROGMEM const uint8_t modegroups[] = {
      7,  4, POLICE_STROBE,0,0,  0,  0,  0,
      7,  0,
 };
+#endif
 
-uint8_t modes[8];  // make sure this is long enough...
+
+/* You might ask why have two levels of lookup here, i.e. why
+ * both modegroups and ramp_FET.  Some lights have two PWM channels,
+ * so there are two lookup tables (ramp_FET and ramp_7135)
+ */
+#define NUM_MODEGROUPS 2
+PROGMEM const uint8_t modegroups[] = {
+     1,  2,  3,  4,  5,  6,  7,  0,
+     1,  2,  3,  5,  7,  0,  0,  0,
+};
 
 // Modes (gets set when the light starts up based on saved config values)
-//PROGMEM const uint8_t ramp_7135[] = { RAMP_7135 };
-PROGMEM const uint8_t ramp_FET[]  = { RAMP_FET };
+uint8_t modes[8];  // make sure this is long enough...
 
 /* Here is where we save the value of mode_idx
  * We don't just save it, but we fool around using the
@@ -206,29 +197,17 @@ PROGMEM const uint8_t ramp_FET[]  = { RAMP_FET };
 
 void
 save_mode() {  // save the current mode index (with wear leveling)
-    uint8_t oldpos=eepos;
+    uint8_t oldpos = eepos;
 
     eepos = (eepos+1) & (WEAR_LVL_LEN-1);  // wear leveling, use next cell
-    /*
-    eepos ++;
-    if (eepos > (EEPSIZE-4)) {
-        eepos = 0;
-    }
-    */
 
     eeprom_write_byte((uint8_t *)(eepos), mode_idx);  // save current state
     eeprom_write_byte((uint8_t *)(oldpos), 0xff);     // erase old state
 }
 
-//#define OPT_firstboot (EEPSIZE-1)
 #define OPT_modegroup (EEPSIZE-1)
 #define OPT_memory (EEPSIZE-2)
-//#define OPT_offtim3 (EEPSIZE-4) -- not used
-//#define OPT_maxtemp (EEPSIZE-5) -- not used
 #define OPT_mode_override (EEPSIZE-3)
-//#define OPT_moon (EEPSIZE-7)
-//#define OPT_revmodes (EEPSIZE-8)
-//#define OPT_muggle (EEPSIZE-9) -- not used
 
 void
 save_state() {  // central method for writing complete state
@@ -238,9 +217,6 @@ save_state() {  // central method for writing complete state
     eeprom_write_byte((uint8_t *)OPT_modegroup, modegroup);
     eeprom_write_byte((uint8_t *)OPT_memory, memory);
     eeprom_write_byte((uint8_t *)OPT_mode_override, mode_override);
-    //eeprom_write_byte((uint8_t *)OPT_moon, enable_moon);
-    //eeprom_write_byte((uint8_t *)OPT_revmodes, reverse_modes);
-    //eeprom_write_byte((uint8_t *)OPT_muggle, muggle_mode);
 }
 
 /* tjt - this gets called when we decide this is the first
@@ -254,6 +230,7 @@ static inline void reset_state() {
     // modegroup = 1;
     modegroup = 0;
     mode_override = 0;
+
     save_state();
 }
 
@@ -293,9 +270,6 @@ restore_state() {
     modegroup = eeprom_read_byte((uint8_t *)OPT_modegroup);
     memory    = eeprom_read_byte((uint8_t *)OPT_memory);
     mode_override = eeprom_read_byte((uint8_t *)OPT_mode_override);
-    //enable_moon   = eeprom_read_byte((uint8_t *)OPT_moon);
-    //reverse_modes = eeprom_read_byte((uint8_t *)OPT_revmodes);
-    //muggle_mode   = eeprom_read_byte((uint8_t *)OPT_muggle);
 
     // unnecessary, save_state handles wrap-around
     // (and we don't really care about it skipping cell 0 once in a while)
@@ -346,6 +320,8 @@ count_modes() {
 
 }	/* End of count_modes() */
 
+/* Called only by set_level() just below
+ */
 static inline void
 set_output ( uint8_t pwm1 ) {
     /* This is no longer needed since we always use PHASE mode.
@@ -394,18 +370,6 @@ void blink(uint8_t val, uint8_t speed)
         _delay_4ms(speed);
     }
 }
-
-#ifdef ANY_STROBE
-static inline void strobe(uint8_t ontime, uint8_t offtime) {
-    uint8_t i;
-    for(i=0;i<8;i++) {
-        set_level(RAMP_SIZE);
-        _delay_4ms(ontime);
-        set_level(0);
-        _delay_4ms(offtime);
-    }
-}
-#endif
 
 #ifdef SOS
 #define SOS_SPEED (200/4)
@@ -534,10 +498,6 @@ main(void)
 
             //toggle(&memory, 2);
 
-            //toggle(&enable_moon, 3);
-
-            //toggle(&reverse_modes, 4);
-
             // Enter the mode group selection mode?
             mode_idx = GROUP_SELECT_MODE;
             toggle(&mode_override, 1);
@@ -545,69 +505,13 @@ main(void)
 
             toggle(&memory, 2);
 
-            //toggle(&firstboot, 8);
-
-            //output = pgm_read_byte(modes + mode_idx);
             output = modes[mode_idx];
             actual_level = output;
         }
 
-#ifdef STROBE
-        else if (output == STROBE) {
-            // 10Hz tactical strobe
-            strobe(33/4,67/4);
-        }
-#endif // ifdef STROBE
-
-// TJT wraps this in ANY_STROBE
-#ifdef ANY_STROBE
-#ifdef POLICE_STROBE
-        else if (output == POLICE_STROBE) {
-            // police-like strobe
-            //for(i=0;i<8;i++) {
-                strobe(20/4,40/4);
-            //}
-            //for(i=0;i<8;i++) {
-                strobe(40/4,80/4);
-            //}
-        }
-#endif // ifdef POLICE_STROBE
-#endif // ifdef ANY_STROBE
-
-#ifdef RANDOM_STROBE
-        else if (output == RANDOM_STROBE) {
-            // pseudo-random strobe
-            uint8_t ms = (34 + (pgm_rand() & 0x3f))>>2;
-            strobe(ms, ms);
-            //strobe(ms, ms);
-        }
-#endif // ifdef RANDOM_STROBE
-
-#ifdef BIKING_STROBE
-        else if (output == BIKING_STROBE) {
-            // 2-level stutter beacon for biking and such
-#ifdef FULL_BIKING_STROBE
-            // normal version
-            for(i=0;i<4;i++) {
-                set_mode(RAMP_SIZE);
-                _delay_4ms(3);
-                set_mode(4);
-                _delay_4ms(15);
-            }
-            //_delay_ms(720);
-            _delay_s();
-#else
-            // small/minimal version
-            set_mode(RAMP_SIZE);
-            _delay_4ms(8);
-            set_mode(3);
-            _delay_s();
-#endif
-        }
-#endif  // ifdef BIKING_STROBE
-
 #ifdef SOS
-        else if (output == SOS) { SOS_mode(); }
+        else if (output == SOS)
+			{ SOS_mode(); }
 #endif // ifdef SOS
 
 #ifdef BATTCHECK
