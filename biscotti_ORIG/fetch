@@ -1,0 +1,8 @@
+#!/bin/sh
+
+TOY=/u1/Projects/Convoy/convoy/ToyKeeper
+BIS=/u1/Projects/Convoy/convoy/ToyKeeper/bistro/biscotti
+
+#ls $TOY/tk*.h
+#cp $TOY/tk*.h .
+#cp $BIS/*.c .
