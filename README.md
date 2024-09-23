@@ -24,4 +24,14 @@ The final "biscuit" has no mode groups.  It has the one group I want.
 It also has no strobes or blinking modes.  No battery monitor.
 It does watch the battery voltage and shut down as needed.
 
+I do my development on my Fedora linux laptop (currently running Fedora 40).
+I need to install the following packages to build this code:
+
+dnf install avr-gcc
+
+dnf install avr-libc
+
+dnf install avrdude
+
+
 
