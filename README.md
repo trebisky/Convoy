@@ -33,5 +33,11 @@ dnf install avr-libc
 
 dnf install avrdude
 
+The final set of brightness levels in "biscuit.hex" is:
+
+0, 1, 7, 15, 32, 63, 127, 25
+
+This seems to work well and the first 3 are ideal for most purposes.
+
 
 
