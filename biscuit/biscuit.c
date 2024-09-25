@@ -49,6 +49,7 @@
 
 /* This stuff used to be in tk-attiny.h, but I find
  * it more convenient to have it right here.
+ * Many of these definitions are used in the tk-* header files
  */
 
 // These values are for the ATtiny13A chip
@@ -58,8 +59,10 @@
 #define BOGOMIPS 950
 
 // Here is the NANJG pin layout as needed for the Convoy S2+
+// PWM is on pin 6, pin 7 is the ADC battery monitor
 #define PWM_PIN     PB1
-#define VOLTAGE_PIN PB2
+// #define VOLTAGE_PIN PB2
+
 #define ADC_CHANNEL 0x01    // MUX 01 corresponds with PB2
 #define ADC_DIDR    ADC1D   // Digital input disable bit corresponding with PB2
 #define ADC_PRSCL   0x06    // clk/64
@@ -234,10 +237,10 @@ main(void)
     ADCSRA |= (1 << ADSC);
 #endif
 
-    while(1) {
+    // Regular brightness level
+	set_level ( level_idx );
 
-        // Regular brightness level
-		set_level ( level_idx );
+    while(1) {
 
 		// do we need this to pace the voltage monitor?
 		_delay_4ms(125);
@@ -279,7 +282,6 @@ main(void)
 
                 lowbatt_cnt = 0;
                 // Wait before lowering the level again
-                //_delay_ms(250);
                 _delay_s();
             }
 
