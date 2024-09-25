@@ -116,33 +116,40 @@ uint8_t long_press __attribute__ ((section (".noinit")));
  */
 uint8_t level_idx __attribute__ ((section (".noinit")));
 
-/* This business of talking about a "FET" is a historical artifact
- * from other flashlights.  The Convoy has no FEt, only a set of 7135 chips.
- * Some lights have both a fet (controlled by one PWM pin) and
+/* The original Biscotti code talked about a FET ramp.
+ * This is a historical artifact from other flashlights.
+ * The Convoy has no FET, only a set of 7135 chips.
+ * Some lights have both a FET (controlled by one PWM pin) and
  * a 7135 (controlled by another pin).
- * So maybe we should change "FET" to "7135" in this source file.
  *
- * What goes on here is that we have a table of PWM settings that
- * we index by 1 ... 7  in the modegroups table.
- * The setting "7" is full on.
- * 0 in the modegroup table is "not in use"
- * (note that we do subtract 1 from the table value)
+ * In this code I just renamed the whole business "pwm_values"
+ * I also did away with the intermediate "modegroups" table
+ * since I only have one modegroup.
+ *
+ * We index the "pwm_values" table with "level_idx" and
+ *  that is the end of that.
+ * I do put a leading entry of 0 in the table, which turns
+ * the light off.  So actual levels are 1 through 7
+ * Along with the "0" this gives us 8 levels.
  */
 
-/* Here is the original set --
- * 0.4, 2.7, 12.5, 25, 42, 50, 100
- */
-
-/* The BLF offers 7 levels, sort of as follows:
- * 0.13, 0.5, 5, 17, 24, 43, 100
+/*  the original set of pwm values gives us these levels:
+ * 0, 0.4, 2.7, 12.5, 25, 42, 50, 100
+ *
+ * The BLF offers 7 levels, sort of as follows:
+ * 0, 0.13, 0.5, 5, 17, 24, 43, 100
  *
  * Note that the Convoy cannot achieve the low moonlight
  *  that the BLF-a6 can
+ *
+ * I decided on this set of levels for the Convoy
+ * 0, 0.4, 2.7, 6, 12.5, 25, 50, 100
  */
 
 /* tjt inserts a zero at the start.
  */
-PROGMEM const uint8_t pwm_values[]  = { 0, 1, 7, 32, 63, 107, 127, 255 };
+// PROGMEM const uint8_t pwm_values[]  = { 0, 1, 7, 32, 63, 107, 127, 255 };
+PROGMEM const uint8_t pwm_values[]  = { 0, 1, 7, 15, 32, 63, 127, 255 };
 
 // This includes 0
 #define NUM_LEVELS	8
@@ -164,6 +171,8 @@ next_level ( void )
 }
 
 /* Call this with a value from 0-7
+ *  divide PWM speed by 2 for moon and low,
+ *  because the nanjg 105d chips are SLOW
  */
 void
 set_level ( uint8_t level )
@@ -173,14 +182,13 @@ set_level ( uint8_t level )
 
     if ( level == 0 ) {
 		PWM_LVL = 0;
-    } else {
-        if (level > 2) {
-            // divide PWM speed by 2 for moon and low,
-            // because the nanjg 105d chips are SLOW
-            TCCR0A = FAST;
-        }
-		PWM_LVL = pgm_read_byte ( pwm_values + level );
+		return;
     }
+
+	if (level > 2)
+		TCCR0A = FAST;
+
+	PWM_LVL = pgm_read_byte ( pwm_values + level );
 }
 
 int

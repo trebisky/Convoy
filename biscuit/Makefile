@@ -36,7 +36,8 @@ all:
 flash:
 #	${AVRDUDE} -p ${MCU} -c usbasp -B10 -B10 -U flash:w:${TARGET}.hex:i -F -P usb
 #   ${AVRDUDE} -p ${MCU} -c usbasp -B10 -U flash:w:${TARGET}.hex:i -F -P usb
-	${AVRDUDE} -p ${MCU} -c usbasp -B10 -U flash:w:${TARGET}.hex
+#	${AVRDUDE} -p ${MCU} -c usbasp -B10 -U flash:w:${TARGET}.hex
+	${AVRDUDE} -p ${MCU} -c usbasp -B10 -e -U flash:w:${TARGET}.hex
 
 dump: $(TARGET).elf
 	avr-objdump -d $(TARGET).elf >$(TARGET).dump
